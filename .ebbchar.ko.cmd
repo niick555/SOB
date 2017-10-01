@@ -1,1 +1,0 @@
-cmd_/home/niick555/SOB-Projeto1/ebbchar.ko := ld -r -m elf_x86_64 -T /home/niick555/linux-3.2.91/scripts/module-common.lds --build-id  -o /home/niick555/SOB-Projeto1/ebbchar.ko /home/niick555/SOB-Projeto1/ebbchar.o /home/niick555/SOB-Projeto1/ebbchar.mod.o
