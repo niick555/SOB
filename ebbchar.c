@@ -16,6 +16,9 @@
 #include <linux/kernel.h>         // Contains types, macros, functions for the kernel
 #include <linux/fs.h>             // Header for the Linux file system support
 #include <asm/uaccess.h>          // Required for the copy to user function
+#include "scatterlist.h"
+#include "skcipher.h"
+#include "completion.h"
 #define  DEVICE_NAME "ebbchar"    ///< The device will appear at /dev/ebbchar using this value
 #define  CLASS_NAME  "ebb"        ///< The device class -- this is a character device driver
 
@@ -30,12 +33,18 @@ static short  size_of_message;              ///< Used to remember the size of th
 static int    numberOpens = 0;              ///< Counts the number of times the device is opened
 static struct class*  ebbcharClass  = NULL; ///< The device-driver class struct pointer
 static struct device* ebbcharDevice = NULL; ///< The device-driver device struct pointer
+static char   operation;
+static char   *key;
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
+
+int criptografar(struct skcipher_def *sk, struct crypto_skcipher *skcipher, struct skcipher_request *req, char *scratchpad);
+
+module_param(key, charp, 0000);
 
 /** @brief Devices are represented as file structure in the kernel. The file_operations structure from
  *  /linux/fs.h lists the callback functions that you wish to associated with your file operations
@@ -49,6 +58,63 @@ static struct file_operations fops =
    .release = dev_release,
 };
 
+struct tcrypt_result {
+    struct completion completion;
+    int err;
+};
+
+/* tie all data structures together */
+struct skcipher_def {
+    struct scatterlist *sg;
+    struct crypto_skcipher *tfm;
+    struct skcipher_request *req;
+    struct tcrypt_result result;
+};
+
+/* Callback function */
+static void test_skcipher_cb(struct crypto_async_request *req, int error)
+{
+    struct tcrypt_result *result = req->data;
+
+    if (error == -EINPROGRESS)
+        return;
+    result->err = error;
+    complete(&result->completion);
+    pr_info("Encryption finished successfully\n");
+}
+
+/* Perform cipher operation */
+static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
+{
+    int rc = 0;
+
+    if (enc)
+        rc = crypto_skcipher_encrypt(sk->req);
+    else
+        rc = crypto_skcipher_decrypt(sk->req);
+
+    switch (rc) {
+    case 0:
+        break;
+    case -EINPROGRESS:
+    case -EBUSY:
+        rc = wait_for_completion_interruptible(
+            &sk->result.completion);
+        if (!rc && !sk->result.err) {
+            (&sk->result.completion)->done = 0;
+            break;
+        }
+    default:
+        pr_info("skcipher encrypt returned with %d result %d\n",
+            rc, sk->result.err);
+        break;
+    }
+    init_completion(&sk->result.completion);
+
+    return rc;
+}
+
+
 /** @brief The LKM initialization function
  *  The static keyword restricts the visibility of the function to within this C file. The __init
  *  macro means that for a built-in driver (not a LKM) the function is only used at initialization
@@ -57,6 +123,7 @@ static struct file_operations fops =
  */
 static int __init ebbchar_init(void){
    printk(KERN_INFO "EBBChar: Initializing the EBBChar LKM\n");
+   printk(KERN_INFO "cryptomodule: Key secreta eh %s\n", key);
 
    // Try to dynamically allocate a major number for the device -- more difficult but worth it
    majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
@@ -142,10 +209,69 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
  *  @param offset The offset if required
  */
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
-   sprintf(message, "%s(%zu letters)", buffer, len);   // appending received string with its length
+  	struct skcipher_def sk;
+	struct crypto_skcipher *skcipher = NULL;
+	struct skcipher_request *req = NULL;
+	char *scratchpad = NULL;
+	char *ivdata = NULL;
+	unsigned char key[32];
+	
+	skcipher = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
+    if (IS_ERR(skcipher)) {
+        pr_info("could not allocate skcipher handle\n");
+        return PTR_ERR(skcipher);
+    }
+
+    req = skcipher_request_alloc(skcipher, GFP_KERNEL);
+    if (!req) {
+        pr_info("could not allocate skcipher request\n");
+    }
+
+    skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG, test_skcipher_cb, &sk.result);
+    
+    /* AES 256 with key */
+    if (crypto_skcipher_setkey(skcipher, key, 32)) {
+        pr_info("key could not be set\n");
+    }    
+    
+   //sprintf(message, "%s(%zu letters)", buffer, len);   // appending received string with its length
+   //TEM QUE VERIFICAR SE A PESSOA EH SACANA!!!!!!!!!! URGENTE
+   
+   sprintf(message, "%s", &(buffer[2]));
    size_of_message = strlen(message);                 // store the length of the stored message
-   printk(KERN_INFO "EBBChar: Received %zu characters from the user\n", len);
+
+   operation = buffer[0];
+
+   printk(KERN_INFO "cryptomodule: a operacao recebida é %c\n", operation);
+   printk(KERN_INFO "cryptomodule: os dados recebidos são %s\n", message);
+   
+   //verificacao
+   if(operation == 'c') {
+   	   printk(KERN_INFO "1cryptomodule: a operacao recebida é %c\n", operation);
+   	   criptografar(&sk, &skcipher, &req, scratchpad);
+   }
+   else if(operation == 'd') printk(KERN_INFO "2cryptomodule: a operacao recebida é %c\n", operation);//descriptografar();
+   else if(operation == 'h') printk(KERN_INFO "3cryptomodule: a operacao recebida é %c\n", operation);//hash();
    return len;
+}
+
+int criptografar(struct skcipher_def *sk, struct crypto_skcipher *skcipher, struct skcipher_request *req, char *scratchpad) {
+	int ret = -EFAULT;
+	
+	(*sk).tfm = skcipher;
+    (*sk).req = req;
+
+    /* We encrypt one block */
+    sg_init_one(&(*sk).sg, scratchpad, 16);
+    skcipher_request_set_crypt(req, &(*sk).sg, &(*sk).sg, 16, scratchpad);
+    init_completion(&(*sk).result.completion);
+
+    /* encrypt data */
+    ret = test_skcipher_encdec(&(*sk), 1);
+
+    pr_info("Encryption triggered successfully\n");
+    
+    return ret;
 }
 
 /** @brief The device release function that is called whenever the device is closed/released by
