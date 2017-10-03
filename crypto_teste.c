@@ -10,27 +10,31 @@ MODULE_ALIAS("Crypto");
 
 int init_module(void)
 {
-	struct crypto_tfm *crypto = NULL;
-	unsigned char key[32]; //Vai ser usada depois para armazenar a key
-	unsigned char criptografado[32];
+	struct crypto_cipher *crypto = NULL;
+	u8 key[32] = "AAAABBBBAAAABBBBAAAABBBBAAAABBB\0"; //Vai ser usada depois para armazenar a key
+	u8 source[16] = "OLATUDOBEMCOMVC\0";
+	u8 criptografado[16], resultado[16];
 
 	printk(KERN_INFO "Hello world 1.\n");
 
-	crypto = crypto_alloc_base("aes", 0, 0);
+	crypto = crypto_alloc_cipher("aes", 0, 0);
 
-	if (IS_ERR(crypto)) {
+	if (IS_ERR(crypto_cipher_tfm(crypto))) {
 		pr_info("could not allocate skcipher handle\n");
-		return PTR_ERR(crypto);
+		return PTR_ERR(crypto_cipher_tfm(crypto));
 	}
 
-	int i = crypto_aes_set_key(crypto, "AAAABBBBAAAABBBBAAAABBBBAAAABBBB", 32);
+	crypto_cipher_setkey(crypto, key, sizeof(key));
 
-	printk("%s", crypto->__crt_alg->cra_name);
-	
-	//aes_encrypt(crypto, criptografado, "OLATUDOBEMKKKKKKKKKKKKKKKKKKKKKK");
-	//crypto_cipher_encrypt_one(struct crypto_cipher *tfm, u8 *dst, const u8 *src)
+	printk("%s\n", crypto_cipher_tfm(crypto)->__crt_alg->cra_name);
 
-	crypto_free_tfm(crypto);
+	crypto_cipher_encrypt_one(crypto, criptografado, source);
+	printk("%s\n", criptografado);
+
+	crypto_cipher_decrypt_one(crypto, resultado, criptografado);
+	printk("%s\n", resultado);
+
+	crypto_free_tfm(crypto_cipher_tfm(crypto));
 
 	return 0;
 }
