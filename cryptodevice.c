@@ -11,7 +11,7 @@
 MODULE_LICENSE("GPL");
 
 static int    majorNumber;
-static char   data[256] = {0};
+static char   data[32];
 static short  size_of_data;
 static struct class*  cryptoClass  = NULL;
 static struct device* cryptoDevice = NULL;
@@ -92,9 +92,34 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    //verificacao
    if(operation == 'c') {
    	   crypto_cipher_encrypt_one(crypto, criptografado, data);
-   	   printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s\n", operation, criptografado);
-   //}
-   //else if(operation == 'd') {
+   	   printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: ", operation);
+
+         for(int i = 0; i < sizeof(criptografado); i++) {
+            printk(KERN_CONT "%02x", criptografado[i]);
+         }
+
+         printk(KERN_CONT "\n");
+   }
+   else if(operation == 'd') {
+      int j = 0;
+
+      printk(KERN_INFO "cryptodevice: criptografado[]: ");
+      for(int i = 0; i < 32; i++) {
+         if(i % 2 == 0) {
+            char aux[2];
+            unsigned long res = 0;
+
+            aux[0] = data[i];
+            aux[1] = data[i + 1];
+
+            kstrtol(aux, 16, &res);
+
+            criptografado[j] = res;
+            printk(KERN_CONT "%x", criptografado[j]);
+            j++;
+         }
+      }
+
    	crypto_cipher_decrypt_one(crypto, descriptografado, criptografado);
    	printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s\n", operation, descriptografado);
    }
