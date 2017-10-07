@@ -77,7 +77,10 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 		return PTR_ERR(crypto_cipher_tfm(crypto));
 	}
 
-	crypto_cipher_setkey(crypto, key, sizeof(key));
+   if (crypto_cipher_setkey(crypto, key, 32 * sizeof(u8)) != 0) {
+      pr_info("cryptodevice: não foi possível definir a key\n");
+      return 1;
+   }
 
    //TEM QUE VERIFICAR SE A PESSOA EH SACANA!!!!!!!!!! URGENTE
    
