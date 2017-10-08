@@ -1,23 +1,10 @@
-obj-m += cryptodevice.o
+obj-m += crypto.o
+
+KDIR = /usr/src/linux-headers-4.10.0-32-generic
 
 all:
-	make cryptodevice
-	make programa
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) modules
 
-cryptodevice:
-	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules
-
-programa: programa.c
-	gcc programa.c -o programa
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
-
-delete:
-	rm cryptodevice.ko
-	rm cryptodevice.mod.c
-	rm cryptodevice.mod.o
-	rm cryptodevice.o
-	rm Module.symvers
-	rm modules.order
-	rm programa
+	rm -rf *.o *.ko *.mod.* *.symvers *.order
