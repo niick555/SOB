@@ -6,6 +6,7 @@
 #include <asm/uaccess.h>
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
+#include <crypto/hash.h>
 #define  DEVICE_NAME "cryptodevice"
 #define  CLASS_NAME  "cryptodevice"
 
@@ -20,12 +21,19 @@ static char   operation;
 static char   *key;
 
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
+static struct sdesc *init_sdesc(struct crypto_shash *alg);
+static int calc_hash(struct crypto_shash *alg, const unsigned char *data, unsigned int datalen, unsigned char *out);
 
 module_param(key, charp, 0000);
 
 static struct file_operations fops =
 {
    .write = dev_write,
+};
+
+struct sdesc {
+    struct shash_desc shash;
+    char ctx[];
 };
 
 static int __init cryptodevice_init(void){
@@ -68,11 +76,9 @@ static void __exit cryptodevice_exit(void){
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
 	struct crypto_cipher *cryptoCipher = NULL;
-   struct crypto_hash *cryptoHash;
-   struct hash_desc cryptoHashDesc;
-   struct scatterlist sg;
+   struct crypto_shash *cryptoSHash = NULL;
 	u8 criptografado[16], descriptografado[16];
-   u8 hashOutput[32];
+   u8 hashOutput[16];
 
 	cryptoCipher = crypto_alloc_cipher("aes", 0, 0);
 
@@ -81,12 +87,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 		return PTR_ERR(crypto_cipher_tfm(cryptoCipher));
 	}
 
-   cryptoHash = crypto_alloc_hash("sha1", 0, 0);
-
-   if (IS_ERR(crypto_hash_tfm(cryptoHash))) {
-      pr_info("cryptodevice: não foi possível alocar o handle para o hash\n");
-      return PTR_ERR(crypto_hash_tfm(cryptoHash));
-   }
+   cryptoSHash = crypto_alloc_shash("sha1", 0, 0);
 
    if (crypto_cipher_setkey(cryptoCipher, key, 32 * sizeof(u8)) != 0) {
       pr_info("cryptodevice: não foi possível definir a key\n");
@@ -138,15 +139,10 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    	printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s\n", operation, descriptografado);
    }
    else if(operation == 'h') {
-      char *teste = "AAAABBBBAAAABBBBAAAABBBBAAAABBBDBBBDBBBD";
-      sg_init_one(&sg, teste, strlen(teste));
-      cryptoHashDesc.tfm = crypto_alloc_hash("sha1", 0, CRYPTO_ALG_ASYNC);
-      cryptoHashDesc.flags = 0;
-      crypto_hash_init(&cryptoHashDesc);
-      crypto_hash_update(&cryptoHashDesc, &sg, strlen(teste));
-      crypto_hash_final(&cryptoHashDesc, hashOutput);
+      //char teste[40] = "AAAABBBBAAAABBBBAAAABBBBAAAABBBDBBBDBBBD";
+      calc_hash(cryptoSHash, data, strlen(data), hashOutput);
 
-      printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s", operation, hashOutput);
+      printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: ", operation);
 
       for(int i = 0; i < sizeof(hashOutput); i++) {
          printk(KERN_CONT "%02x", hashOutput[i]);
@@ -154,8 +150,32 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    }
    
    crypto_free_cipher(cryptoCipher);
-   crypto_free_hash(cryptoHash);
+   crypto_free_shash(cryptoSHash);
    return len;
+}
+
+static struct sdesc *init_sdesc(struct crypto_shash *alg) {
+    struct sdesc *sdesc;
+    int size;
+
+    size = sizeof(struct shash_desc) + crypto_shash_descsize(alg);
+    sdesc = kmalloc(size, GFP_KERNEL);
+    
+    sdesc->shash.tfm = alg;
+    sdesc->shash.flags = 0x0;
+
+    return sdesc;
+}
+
+static int calc_hash(struct crypto_shash *alg, const unsigned char *data, unsigned int datalen, unsigned char *out) {
+    struct sdesc *sdesc;
+    int ret;
+
+    sdesc = init_sdesc(alg);
+
+    ret = crypto_shash_digest(&sdesc->shash, data, datalen, out);
+    kfree(sdesc);
+    return ret;
 }
 
 module_init(cryptodevice_init);
