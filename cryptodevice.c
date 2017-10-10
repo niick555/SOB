@@ -72,7 +72,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    struct hash_desc cryptoHashDesc;
    struct scatterlist sg;
 	u8 criptografado[16], descriptografado[16];
-   unsigned char hashOutput[32];
+   u8 hashOutput[32];
 
 	cryptoCipher = crypto_alloc_cipher("aes", 0, 0);
 
@@ -87,9 +87,6 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
       pr_info("cryptodevice: não foi possível alocar o handle para o hash\n");
       return PTR_ERR(crypto_hash_tfm(cryptoHash));
    }
-
-   cryptoHashDesc.tfm = cryptoHash;
-   cryptoHashDesc.flags = 0;
 
    if (crypto_cipher_setkey(cryptoCipher, key, 32 * sizeof(u8)) != 0) {
       pr_info("cryptodevice: não foi possível definir a key\n");
@@ -141,12 +138,15 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    	printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s\n", operation, descriptografado);
    }
    else if(operation == 'h') {
+      char *teste = "AAAABBBBAAAABBBBAAAABBBBAAAABBBDBBBDBBBD";
+      sg_init_one(&sg, teste, strlen(teste));
+      cryptoHashDesc.tfm = crypto_alloc_hash("sha1", 0, CRYPTO_ALG_ASYNC);
+      cryptoHashDesc.flags = 0;
       crypto_hash_init(&cryptoHashDesc);
-      sg_init_one(&sg, data, 32);
-      crypto_hash_update(&cryptoHashDesc, &sg, 32);
+      crypto_hash_update(&cryptoHashDesc, &sg, strlen(teste));
       crypto_hash_final(&cryptoHashDesc, hashOutput);
 
-      printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: ", operation);
+      printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s", operation, hashOutput);
 
       for(int i = 0; i < sizeof(hashOutput); i++) {
          printk(KERN_CONT "%02x", hashOutput[i]);
