@@ -79,6 +79,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    struct crypto_shash *cryptoSHash = NULL;
 	u8 criptografado[16], descriptografado[16];
    u8 hashOutput[16];
+   int i;
 
 	cryptoCipher = crypto_alloc_cipher("aes", 0, 0);
 
@@ -109,7 +110,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    	   crypto_cipher_encrypt_one(cryptoCipher, criptografado, data);
    	   printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: ", operation);
 
-         for(int i = 0; i < sizeof(criptografado); i++) {
+         for(i = 0; i < sizeof(criptografado); i++) {
             printk(KERN_CONT "%02x", criptografado[i]);
          }
 
@@ -119,7 +120,7 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
       int j = 0;
 
       printk(KERN_INFO "cryptodevice: criptografado[]: ");
-      for(int i = 0; i < 32; i++) {
+      for(i = 0; i < 32; i++) {
          if(i % 2 == 0) {
             char aux[2];
             unsigned long res = 0;
@@ -139,12 +140,12 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
    	printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: %s\n", operation, descriptografado);
    }
    else if(operation == 'h') {
-      //char teste[40] = "AAAABBBBAAAABBBBAAAABBBBAAAABBBDBBBDBBBD";
-      calc_hash(cryptoSHash, data, strlen(data), hashOutput);
+      char teste[32] = "AAAABBBBAAAABBBBAAAABBBBAAAABBBD";
+      calc_hash(cryptoSHash, teste, 32, hashOutput);
 
       printk(KERN_INFO "cryptodevice: a operacao recebida é %c, resultado: ", operation);
 
-      for(int i = 0; i < sizeof(hashOutput); i++) {
+      for(i = 0; i < sizeof(hashOutput); i++) {
          printk(KERN_CONT "%02x", hashOutput[i]);
       }
    }
